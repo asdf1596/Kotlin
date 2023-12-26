@@ -274,6 +274,8 @@ class cat : Animal(){
 }
 ```
 
+이해 더 필요
+
 ## type check
 
 ```
