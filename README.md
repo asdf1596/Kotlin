@@ -341,3 +341,55 @@ fun myFunc(a:Int,callBack : () -> Unit){
 ## suspend
 
 이래저래 이해 더 필요?
+
+# 코루틴
+
+코루틴(Coroutine)은 일반 루틴과는 다르게 중단과 재개가 가능하며 중단한 곳에서 재개가 가능하다.
+
+비동기 처리를 코루틴이 순차적으로 할 수 있도록 도와준다.
+
+suspend에 대한 이해 및 비동기 처리에 대한 공부가 더 필요한 듯...
+
+물론 후반에 갈수록 어려워지지만 시작하기에는 어렵지 않다
+
+```
+import kotlinx.coroutines.*
+fun main(){
+    GlobalScope.launch{this: CoroutinesScope //launch:코루틴 빌드, GlobalScope:메인 코드가 작동된 후 실행.
+    delay(timeMillis: 1000L)
+    println("World!")
+    }
+    println("Hello,")
+    Thread.sleep(2000L)
+}
+```
+
+한번World!를 실행 후 계속 실행한다는데 프로그램이 종료돠어서 World!가 2번 이상 츨력되지 않는다고 함...어쨰서..?
+
+```
+import kotlinx.coroutines.*
+fun main(){
+    GlobalScope.launch{this: CoroutinesScope
+        delay(timeMillis: 1000L)
+        println("World!")
+    }
+    println("Hello,")
+    runBlocking{this:CoruotineScope //코루틴 실행용 runBlocking
+        delay(timeMillis: 2000L)
+    }
+}
+```
+
+```
+import kotlinx.coroutines.*
+fun main() =
+    runBlocking{this: CoroutineScope
+        GlobalScope.launch{this: CoroutinesScope //launch:코루틴 빌드, GlobalScope:메인 코드가 작동된 후 실행.
+        delay(timeMillis: 1000L)
+        println("World!")
+        }
+        println("Hello,")
+        delay(timeMillis: 2000L)
+    }
+
+```
