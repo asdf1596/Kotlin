@@ -364,7 +364,9 @@ fun main(){
 }
 ```
 
-한번World!를 실행 후 계속 실행한다는데 프로그램이 종료돠어서 World!가 2번 이상 츨력되지 않는다고 함...어쨰서..?
+ㄴ한번World!를 실행 후 계속 실행한다는데 프로그램이 종료돠어서 World!가 2번 이상 츨력되지 않는다고 함...어쨰서..?
+
+ㄴ다시 생각해보니 메인 코드와 코루틴을 동시에 실행시키는데 프로그램 종료 조건은 메인 프로그랭 종료이니 그런듯?
 
 ```
 import kotlinx.coroutines.*
@@ -393,3 +395,113 @@ fun main() =
     }
 
 ```
+
+```
+import kotlinx.coroutines.*
+fun main() =
+    runBlocking{this: CoroutineScope
+        val job = GlobalScope.launch{this: CoroutinesScope
+            delay(timeMillis: 3000L)
+            println("World!")
+        }
+        println("Hello,")
+        job.join() //아마 함수 실행시키는 거로 보임
+    }
+
+```
+
+## Structured concurrency
+
+```
+import kotlinx.coroutines.*
+fun main() =
+    runBlocking{this: CoroutineScope
+        this.launch{this: CoroutinesScope //launch:코루틴 빌드, GlobalScope:메인 코드가 작동된 후 실행.
+            delay(timeMillis: 3000L)
+            println("World!")
+        }
+
+        launch{this: CoroutinesScope //launch:코루틴 빌드, GlobalScope:메인 코드가 작동된 후 실행.
+            delay(timeMillis: 3000L)
+            println("World!")
+        }
+        println("Hello,")
+    }
+
+```
+
+결론적으로 실행까지 기다려주는 것이 스트럭쳐드 컨크러시이고 상당히 자주 나온다.
+
+```
+import kotlinx.coroutines.*
+fun main() =
+    runBlocking{this: CoroutineScope
+        launch{this: CoroutinesScope
+            myWorld()
+        }
+        println("Hello,")
+}
+suspend fun myWorld(){
+    delay(timeMillis: 1000L)
+    println("world!")
+}
+```
+
+ㄴ서스펜드 평션(예:delay)는 서스펜드 및 코루틴에서만 사용 가능하다
+
+```
+fun main() = runBlocking{
+    repeat(100_000){
+        launch{
+            delay(1000L)
+            print(".")
+        }
+    }
+}
+```
+
+ㄴ코루틴이 가볍다 증명용 코드
+
+```
+import kotlinx.coroutines.*
+fun main() =
+    runBlocking{this: CoroutineScope
+        GlobalScope.launch {this: CoroutineScope
+        repeat(times:1000) {i->
+        println("I'm sleeping $i ...")
+    delay(timeMillis: 500L)
+        }
+    }
+    delay(timeMillis: 1300L)
+}
+```
+
+ㄴ메인프로세스가 끝날 시 코루틴도 끝난다는 코드
+
+```
+import kotlinx.coroutines.*
+fun main() =
+    runBlocking{this: CoroutineScope
+        launch {this: CoroutineScope
+            repeat(times:5) {i->
+            println("Coroutine A,  $i ...")
+            delay(timeMillis:10L)
+            }
+        }
+        launch {this: CoroutineScope
+            repeat(times:5) {i->
+            println("Coroutine B,  $i ...")
+            delay(timeMillis:10L)
+            }
+        }
+    println("Coroutine Outer")
+}
+```
+
+ㄴ코루틴의 중단 및 재개의 예시 코드
+
+메인 코드와 코루틴은 동시에 실행이 가능하지만 코루틴끼리는 싱글 스레드에서 동작하여서
+
+내부 작업은 순차적으로 실행된다.
+
+병렬로 동작하려면 동시성을 제어해야 한다.(await,async,delay등 사용)
