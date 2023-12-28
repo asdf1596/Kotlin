@@ -505,3 +505,336 @@ fun main() =
 내부 작업은 순차적으로 실행된다.
 
 병렬로 동작하려면 동시성을 제어해야 한다.(await,async,delay등 사용)
+
+# 코루틴 3강
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking { this: CoroitineScope
+    val job = launch { this: CoroutinesScope #캔슬 가능 개체
+        repeat(time:1000) {i ->
+            prinln(msg:"job: I'm sleeping $i ...")
+        delay(timeMillis: 500L)
+        }
+    }
+    delay(timeMillis: 1300L)
+    println(msg: "main: I'm tried of waiting!")
+    job.cancle()
+    job.join()
+    println(msg: "main: Now I can quit")
+}
+```
+
+실행과 동시에 job이 실행->1.3초 후에 cancle이 실행되고 정지함->(그럼 join은 어째서 존재하는가?)????
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking {
+    val startTime = currentTimeMillis()
+    val job = launch(Dispatchers.Default) {
+        var nextPrintTime = startTime
+        var i = 0
+        while (i < 5) { // computation loop, just wastes CPU
+            // print a message twice a second
+            //yield()
+            if (currentTimeMillis() >= nextPrintTime) {
+                println("job: I'm sleeping ${i++} ...")
+                nextPrintTime += 500L
+            }
+        }
+    }
+    delay(1300L) // delay a bit
+    println("main: I'm tired of waiting!")
+    job.cancelAndJoin() // cancels the job and waits for its completion
+    println("main: Now I can quit.")
+}
+```
+
+cancleandjoin이 잘 작동되지 않는 이유는 delay같은 서스펜드 펑션이 없어서
+
+yield()가 있으면 delay없이도 가능
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking {
+    val startTime = currentTimeMillis()
+    val job = launch(Dispatchers.Default) {
+        var nextPrintTime = startTime
+        var i = 0
+        while (isActive) { // cancellable computation loop
+            // print a message twice a second
+            if (currentTimeMillis() >= nextPrintTime) {
+                println("job: I'm sleeping ${i++} ...")
+                nextPrintTime += 500L
+            }
+        }
+    }
+    delay(1300L) // delay a bit
+    println("main: I'm tired of waiting!")
+    job.cancelAndJoin() // cancels the job and waits for its completion
+    println("main: Now I can quit.")
+}
+```
+
+isActive는 코루틴이 돌아갈 수 있는 상태인지 아닌지를 판별하는 것인데 cancle로 인해 불허되어서 코드 정지
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking {
+    val job = launch {
+        try {
+            repeat(1000) { i ->
+                println("job: I'm sleeping $i ...")
+                delay(500L)
+            }
+        } finally {
+            println("job: I'm running finally")
+        }
+    }
+    delay(1300L) // delay a bit
+    println("main: I'm tired of waiting!")
+    job.cancelAndJoin() // cancels the job and waits for its completion
+    println("main: Now I can quit.")
+}
+```
+
+cancle이 익셒션을 발생시키고 그것으로 인해 try가 아닌 finally가 실행된다
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking {
+    val job = launch {
+        try {
+            repeat(1000) { i ->
+                println("job: I'm sleeping $i ...")
+                delay(500L)
+            }
+        } finally {
+            withContext(NonCancellable) {
+                println("job: I'm running finally")
+                delay(1000L)
+                println("job: And I've just delayed for 1 sec because I'm non-cancellable")
+            }
+        }
+    }
+    delay(1300L) // delay a bit
+    println("main: I'm tired of waiting!")
+    job.cancelAndJoin() // cancels the job and waits for its completion
+    println("main: Now I can quit.")
+}
+```
+
+rare한 케이스, 정지된 코루틴 안에서 코루틴이 실행되는 경우
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking {
+    withTimeout(1300L) {
+        repeat(1000) { i ->
+            println("I'm sleeping $i ...")
+            delay(500L)
+        }
+    }
+}
+```
+
+0.5초씩 1000번 박복하는 코드인데 withTimeout을 통해 정지시킨다.(허나 메인 코드여서 그런지 익셒션이 발생한다고 한다.)
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking {
+    val result = withTimeoutOrNull(1300L) {
+        repeat(1000) { i ->
+            println("I'm sleeping $i ...")
+            delay(500L)
+        }
+        "Done" // will get cancelled before it produces this result
+    }
+    println("Result is $result")
+}
+```
+
+이번에는 시간이 지날 시 null값으로 바뀌고 값이 "Done"으로 바뀌는 코드이다.
+
+if문도 아닌데 사실 왜 "Done"값이 나오는지 잘 모르겠다.
+
+ㄴ찾아보니 whitTimeOrNull이 마지막으로 나온 표현식의 값을 반환한다고 해서 "Done"이 출력되는 듯 하다.(if문 비숫한 것 같기도..?)
+
+# 코루틴 4강
+
+```
+import kotlinx.coroutines.*
+import kotlin.system.*
+
+fun main() = runBlocking<Unit> {
+    val time = measureTimeMillis {
+        val one = doSomethingUsefulOne()
+        val two = doSomethingUsefulTwo()
+        println("The answer is ${one + two}")
+    }
+    println("Completed in $time ms")
+}
+
+suspend fun doSomethingUsefulOne(): Int {
+    delay(1000L) // pretend we are doing something useful here
+    return 13
+}
+
+suspend fun doSomethingUsefulTwo(): Int {
+    delay(1000L) // pretend we are doing something useful here, too
+    return 29
+}
+```
+
+순차적으로 돌아가는 코드
+
+```
+import kotlinx.coroutines.*
+import kotlin.system.*
+
+fun main() = runBlocking<Unit> {
+    val time = measureTimeMillis {
+        val one = async { doSomethingUsefulOne() }
+        val two = async { doSomethingUsefulTwo() }
+        println("The answer is ${one.await() + two.await()}")
+    }
+    println("Completed in $time ms")
+}
+
+suspend fun doSomethingUsefulOne(): Int {
+    delay(1000L) // pretend we are doing something useful here
+    return 13
+}
+
+suspend fun doSomethingUsefulTwo(): Int {
+    delay(1000L) // pretend we are doing something useful here, too
+    return 29
+}
+```
+
+순차적으로 ->비동기적으로 실행(실행시간 줄이기),async실행시 코드 실행 시작만 하고 바로 다음줄로 넘어감,await->async 작동될때까지 기다리기
+
+```
+import kotlinx.coroutines.*
+import kotlin.system.*
+
+fun main() = runBlocking<Unit> {
+    val time = measureTimeMillis {
+        val one = async(start = CoroutineStart.LAZY) { doSomethingUsefulOne() }
+        val two = async(start = CoroutineStart.LAZY) { doSomethingUsefulTwo() }
+        // some computation
+        one.start() // start the first one
+        two.start() // start the second one
+        println("The answer is ${one.await() + two.await()}")
+    }
+    println("Completed in $time ms")
+}
+
+suspend fun doSomethingUsefulOne(): Int {
+    delay(1000L) // pretend we are doing something useful here
+    return 13
+}
+
+suspend fun doSomethingUsefulTwo(): Int {
+    delay(1000L) // pretend we are doing something useful here, too
+    return 29
+}
+```
+
+라인의 start에 LAZY를 걸었을 때 start를 걸어야 작동 시작되도록 코딩,만약 start를 하지 않을 시 await를 만나야 실행이 되서 2초가 걸림
+
+```
+import kotlinx.coroutines.*
+import kotlin.system.*
+
+fun main() = runBlocking<Unit> {
+    val time = measureTimeMillis {
+        val one = async(start = CoroutineStart.LAZY) { doSomethingUsefulOne() }
+        val two = async(start = CoroutineStart.LAZY) { doSomethingUsefulTwo() }
+        // some computation
+        one.start() // start the first one
+        two.start() // start the second one
+        println("The answer is ${one.await() + two.await()}")
+    }
+    println("Completed in $time ms")
+}
+
+suspend fun doSomethingUsefulOne(): Int {
+    delay(1000L) // pretend we are doing something useful here
+    return 13
+}
+
+suspend fun doSomethingUsefulTwo(): Int {
+    delay(1000L) // pretend we are doing something useful here, too
+    return 29
+}
+```
+
+위 예시는 하지 말라는 예시이다. 위 코드를 실행할 시 큰일이 벌어짐(외부함수여서 익셒션이 발생하여도 중지가 되지 않는다)(더 생각 필요)
+
+```
+import kotlinx.coroutines.*
+import kotlin.system.*
+
+fun main() = runBlocking<Unit> {
+    val time = measureTimeMillis {
+        println("The answer is ${concurrentSum()}")
+    }
+    println("Completed in $time ms")
+}
+
+suspend fun concurrentSum(): Int = coroutineScope {
+    val one = async { doSomethingUsefulOne() }
+    val two = async { doSomethingUsefulTwo() }
+    one.await() + two.await()
+}
+
+suspend fun doSomethingUsefulOne(): Int {
+    delay(1000L) // pretend we are doing something useful here
+    return 13
+}
+
+suspend fun doSomethingUsefulTwo(): Int {
+    delay(1000L) // pretend we are doing something useful here, too
+    return 29
+}
+```
+
+이 경우는 scope에서 쓰다 보니 익셒션이 발생하면 캔슬된다,스트럭쳐드 컨크러쉬 형태로 만들어서 하는게 좋다
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking<Unit> {
+    try {
+        failedConcurrentSum()
+    } catch(e: ArithmeticException) {
+        println("Computation failed with ArithmeticException")
+    }
+}
+
+suspend fun failedConcurrentSum(): Int = coroutineScope {
+    val one = async<Int> {
+        try {
+            delay(Long.MAX_VALUE) // Emulates very long computation
+            42
+        } finally {
+            println("First child was cancelled")
+        }
+    }
+    val two = async<Int> {
+        println("Second child throws an exception")
+        throw ArithmeticException()
+    }
+    one.await() + two.await()
+}
+```
+
+실행-one,two실행-two에서 출력 후 익셒션 발생-전파-one에서 finally로 연결-출력-전파로 인해 메인에서 catch로 이동-출력
