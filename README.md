@@ -838,3 +838,258 @@ suspend fun failedConcurrentSum(): Int = coroutineScope {
 ```
 
 실행-one,two실행-two에서 출력 후 익셒션 발생-전파-one에서 finally로 연결-출력-전파로 인해 메인에서 catch로 이동-출력
+
+# 코틀린5강(이해가 힘든 용어들이 좀 들림)
+
+## 코틀린이 어떻게 돌아가는지
+
+순차적으로 작성했음에도 어떻게 비동기적으로 돌아가는지
+
+ㄴ함수의 끝에 파라미터가 하나 추가되어 컨티뉴에이션이라는 객체를 넘겨주는 형태로 변경
+
+ㄴ코드에서 실행할때 LABEL을 넣어서 중단 및 재생 기준을 만듬
+
+ㄴswtich case문 같은 느낌
+
+ㄴ컨티뉴에이션..?
+
+ㄴ콜백(?)같은 느낌
+
+## 코틀린 java식
+
+코드 쓴 후에 Tools - Kotlin - Show Kotlin Bytecode - 디컴파일
+
+코틀린 코드가 분해? 되어 보여짐
+
+switch case문이 보인다.
+
+```
+GlobalScope.launch {
+    val userData = fetchUserData()
+    var userCache = cacheUserData(userData)
+    updateTextView(userCache)
+}
+```
+
+ㄴwhen문 안에서 기준이 되는 변수의 값을 늘려가면서 순차적 실행처럼 보임
+
+ㄴ또한 when문이기 떄문에 중단 및 재생이 가능하다
+
+결론:콜백을 내가 하는것이 아닌 코틀린 컴파일러가 하는 것
+
+(이래저래 이해하려면 여러번 봐야할듯 하다)
+
+# 6강
+
+## 디스패처
+
+코루틴이 어떤 스레드에서 실행시킬지 결정해주는 요소
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking<Unit> {
+    launch { // context of the parent, main runBlocking coroutine
+        println("main runBlocking      : I'm working in thread ${Thread.currentThread().name}")
+    }
+    launch(Dispatchers.Unconfined) { // not confined -- will work with main thread
+        println("Unconfined            : I'm working in thread ${Thread.currentThread().name}")
+    }
+    launch(Dispatchers.Default) { // will get dispatched to DefaultDispatcher
+        println("Default               : I'm working in thread ${Thread.currentThread().name}")
+    }
+    launch(newSingleThreadContext("MyOwnThread")) { // will get its own new thread
+        println("newSingleThreadContext: I'm working in thread ${Thread.currentThread().name}")
+    }
+}
+```
+
+코루틴 4개 실행순서:2-3-4-1
+
+2번:main 스레드에서 실행
+
+3번:worker-1에서 실행
+
+4번:비용이 높은.한번 사용마다 스레드를 만듬,실사용시에는 newSingleThreadContext("MyOwnThread").use로 쓰는게 좋음
+
+1번:runblocking에서 옵셔널 파라미터 없이 실행됨->그럴시 자신을 호출했던 곳(메인)에서 실행
+
+디스페처:어디서 코루틴일 실행될지 정하며 코루틴 콘텍스트에 저장된다
+
+## 코루틴 스레드와 디버깅
+
+```
+import kotlinx.coroutines.*
+
+fun log(msg: String) = println("[${Thread.currentThread().name}] $msg")
+
+fun main() = runBlocking<Unit> {
+    val a = async {
+        log("I'm computing a piece of the answer")
+        6
+    }
+    val b = async {
+        log("I'm computing another piece of the answer")
+        7
+    }
+    log("The answer is ${a.await() * b.await()}")
+}
+```
+
+코틀린 라이브러리는 코루틴을 디버깅하기 위한 도구가 있다.
+
+log라는 함수는 지금 어디서 실행되고 있는지 알려준다.
+
+만약 오느 코루틴에서 실행되고 있는지 볼려면 jvm option에서 설정을 추가한다.
+
+```
+import kotlinx.coroutines.*
+
+fun log(msg: String) = println("[${Thread.currentThread().name}] $msg")
+
+fun main() {
+    newSingleThreadContext("Ctx1").use { ctx1 ->
+        newSingleThreadContext("Ctx2").use { ctx2 ->
+            runBlocking(ctx1) {
+                log("Started in ctx1")
+                withContext(ctx2) {
+                    log("Working in ctx2")
+                }
+                log("Back to ctx1")
+            }
+        }
+    }
+}
+```
+
+withcontext를 통해 스레드간을 점프할 수 있다.
+
+use를 통해 스레드를 클로즈 해줬다.(?)
+
+## 콘텍스트
+
+ㄴ...(공부 필요)
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking<Unit> {
+    println("My job is ${coroutineContext[Job]}")
+}
+```
+
+## children
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking<Unit> {
+    // launch a coroutine to process some kind of incoming request
+    val request = launch {
+        // it spawns two other jobs
+        launch(Job()) {
+            println("job1: I run in my own Job and execute independently!")
+            delay(1000)
+            println("job1: I am not affected by cancellation of the request")
+        }
+        // and the other inherits the parent context
+        launch {
+            delay(100)
+            println("job2: I am a child of the request coroutine")
+            delay(1000)
+            println("job2: I will not execute this line if my parent request is cancelled")
+        }
+    }
+    delay(500)
+    request.cancel() // cancel processing of the request
+    println("main: Who has survived request cancellation?")
+    delay(1000) // delay the main thread for a second to see what happens
+}
+```
+
+코루틴이 실행될시 코루틴은 부모의 자식 코루틴이 된다.
+
+996줄의 코루틴은 앞선 launch의 자식이 되는 것
+
+대신 globalscope의 경우는 예외이다.
+
+위 코드의 경우는 globalscope는 예외의 경우라서 끝까지 실행이 되었지만 일반 자식 코루틴의 경우에는
+
+부모가 cancle되어서 자식도 cancle되었다.
+
+## 부모 코루틴의 책임
+
+부모 코루틴은 모든 자식 코루틴들이 실행될때까지 기다려줌(직접 트랙킹(?) 필요없음)
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking<Unit> {
+    // launch a coroutine to process some kind of incoming request
+    val request = launch {
+        repeat(3) { i -> // launch a few children jobs
+            launch  {
+                delay((i + 1) * 200L) // variable delay 200ms, 400ms, 600ms
+                println("Coroutine $i is done")
+            }
+        }
+        println("request: I'm done and I don't explicitly join my children that are still active")
+    }
+    request.join() // wait for completion of the request, including all its children
+    println("Now processing of the request is complete")
+}
+```
+
+부모 코드가 다 실행되었음을 알린 후에도 자식 코루틴이 끝날떄까지 기다림을 알려주는 코드
+
+## 코루틴 엘리먼트 하나로 만들기
+
+```
+import kotlinx.coroutines.*
+
+fun main() = runBlocking<Unit> {
+    launch(Dispatchers.Default + CoroutineName("test")) {
+        println("I'm working in thread ${Thread.currentThread().name}")
+    }
+}
+```
+
+여러개의 코루틴 엘리먼트(?)를 넣고 싶을때는 + 사용하기,(+는 자체적으로 더하는 기능이 있음)
+
+## 코루틴 스코프
+
+```
+import kotlinx.coroutines.*
+
+class Activity {
+    private val mainScope = CoroutineScope(Dispatchers.Default) // use Default for test purposes
+
+    fun destroy() {
+        mainScope.cancel()
+    }
+
+    fun doSomething() {
+        // launch ten coroutines for a demo, each working for a different time
+        repeat(10) { i ->
+            mainScope.launch {
+                delay((i + 1) * 200L) // variable delay 200ms, 400ms, ... etc
+                println("Coroutine $i is done")
+            }
+        }
+    }
+} // class Activity ends
+
+fun main() = runBlocking<Unit> {
+    val activity = Activity()
+    activity.doSomething() // run test function
+    println("Launched coroutines")
+    delay(500L) // delay for half a second
+    println("Destroying activity!")
+    activity.destroy() // cancels all coroutines
+    delay(1000) // visually confirm that they don't work
+}
+```
+
+ㄴ실행(dosomthing)을 하다가 멈추면(destroy) 실행 멈두기(cancle)
+
+안드로이드 앱을 쓰다가 끄면은 작업을 멈추어야 한다. 그것을 위해 코루틴 스코프가 있다.
