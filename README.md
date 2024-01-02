@@ -1090,6 +1090,6 @@ fun main() = runBlocking<Unit> {
 }
 ```
 
-ㄴ실행(dosomthing)을 하다가 멈추면(destroy) 실행 멈두기(cancle)
+ㄴ실행(dosomthing)을 하다가 멈추면(destroy) 실행 멈추기(cancle)
 
 안드로이드 앱을 쓰다가 끄면은 작업을 멈추어야 한다. 그것을 위해 코루틴 스코프가 있다.
